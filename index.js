@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 2000;
 
@@ -62,6 +62,7 @@ client.connect().then(() => {
 // db collection
 const db = client.db("ThreadMart");
 const usersCollection = db.collection("users");
+const productsCollection = db.collection("products");
 
 // ------------User------------
 app.post("/register", async (req, res) => {
@@ -149,6 +150,83 @@ app.post("/logout", (req, res) => {
   });
 
   res.json({ message: "Logged out successfully" });
+});
+
+// ---------------product-------------
+app.get("/products", async (req, res) => {
+  try {
+    const result = await productsCollection.find().toArray();
+    res.send(result);
+  } catch (error) {
+    console.log("all product get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "all product get api some problem.",
+    });
+  }
+});
+
+// a product get
+app.get("/product/:id/specific", async (req, res) => {
+  try {
+    const query = { _id: new ObjectId(req.params.id) };
+    const result = await productsCollection.findOne(query);
+    res.send(result);
+  } catch (error) {
+    console.log("A product get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "A product get api some problem.",
+    });
+  }
+});
+
+// a product post
+app.post("/product/post", async (req, res) => {
+  try {
+    const newProduct = req.body;
+    const result = await productsCollection.insertOne(newProduct);
+    res.send(result);
+  } catch (error) {
+    console.log("A product post api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "A product post api some problem.",
+    });
+  }
+});
+
+// a product delete
+app.delete("/product/:id/delete", async (req, res) => {
+  try {
+    const query = { _id: new ObjectId(req.params.id) };
+    const result = await productsCollection.deleteOne(query);
+    res.send(result);
+  } catch (error) {
+    console.log("A product delete api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "A product delete api some problem.",
+    });
+  }
+});
+
+// a product update
+app.patch("/product/:id/update", async (req, res) => {
+  try {
+    const query = { _id: new ObjectId(req.params.id) };
+    const update = { $set: req.body };
+    const result = await productsCollection.updateOne(query, update, {
+      upsert: true,
+    });
+    res.send(result);
+  } catch (error) {
+    console.log("A product update api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "A product update api some problem.",
+    });
+  }
 });
 
 // basic
