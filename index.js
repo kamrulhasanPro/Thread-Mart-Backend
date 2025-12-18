@@ -281,6 +281,14 @@ app.patch("/product/:id/update", async (req, res) => {
 app.post("/orders", async (req, res) => {
   try {
     const newOrder = req.body;
+    const checkProduct = await ordersCollection.findOne({
+      productId: newOrder?.productId,
+      orderStatus: "complete",
+    });
+    console.log(checkProduct);
+    if (!checkProduct)
+      return res.send({ status: 409, message: "Already add this product" });
+
     const result = await ordersCollection.insertOne(newOrder);
     res.send(result);
   } catch (error) {
@@ -292,57 +300,84 @@ app.post("/orders", async (req, res) => {
   }
 });
 
-// --------------Stripe Payment------------
-app.post("/create-checkout-session", async (req, res) => {
-  const {
-    orderQuantity,
-    productPrice,
-    email,
-    productId,
-    productName,
-    images,
-    orderId,
-  } = req.body;
-  const session = await stripe.checkout.sessions.create({
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: productName,
-            images: [...images],
-            metadata: {
-              productId,
-              email,
-            },
-          },
-          unit_amount: productPrice,
-        },
-        quantity: Number(orderQuantity),
-      },
-    ],
-    mode: "payment",
-    customer_email: email,
-    metadata: {
-      productId,
-      email,
-      orderId,
-    },
-    success_url: `${process.env.YOUR_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.YOUR_DOMAIN}/payment-cancel?session_id={CHECKOUT_SESSION_ID}`,
-  });
-
-  res.json({ url: session.url });
+// get pending order
+app.get("/orders/:email/orderStatus", async (req, res) => {
+  try {
+    const email = req.params.email;
+    console.log(email);
+    const { status } = req.query;
+    const result = await ordersCollection
+      .find({ "customer.buyerEmail": email, orderStatus: status })
+      .toArray();
+    res.json(result);
+  } catch (error) {
+    console.log("pending/approve orders get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "pending/approve orders get api some problem.",
+    });
+  }
 });
 
+// --------------Stripe Payment------------
+app.post(
+  "/create-checkout-session",
+  verifyToken,
+  verifyRoll("buyer"),
+  async (req, res) => {
+    const {
+      orderQuantity,
+      productPrice,
+      email,
+      productId,
+      productName,
+      images,
+      orderId,
+    } = req.body;
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: productName,
+              images: [...images],
+              metadata: {
+                productId,
+                email,
+              },
+            },
+            unit_amount: productPrice,
+          },
+          quantity: Number(orderQuantity),
+        },
+      ],
+      mode: "payment",
+      customer_email: email,
+      metadata: {
+        productId,
+        email,
+        orderId,
+      },
+      success_url: `${process.env.YOUR_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.YOUR_DOMAIN}/payment-cancel?session_id={CHECKOUT_SESSION_ID}`,
+    });
+
+    res.json({ url: session.url });
+  }
+);
+
+// stripe retrieve
 app.get("/session-status", async (req, res) => {
   const session = await stripe.checkout.sessions.retrieve(req.query.session_id);
-  console.log(session);
+
   const query = {
     _id: new ObjectId(session.metadata.orderId),
   };
+
   const checkPayment = await ordersCollection.findOne(query);
-  console.log(checkPayment);
+
+  // check is payment paid?
   if (checkPayment?.paymentStatus === "paid") {
     return res.json({
       status: 409,
@@ -350,6 +385,7 @@ app.get("/session-status", async (req, res) => {
     });
   }
 
+  // update payment status
   await ordersCollection.updateOne(query, {
     $set: { paymentStatus: session.payment_status },
   });
