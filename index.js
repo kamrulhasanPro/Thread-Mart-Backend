@@ -307,7 +307,7 @@ app.get("/orders/:email/orderStatus", async (req, res) => {
     console.log(email);
     const { status } = req.query;
     const result = await ordersCollection
-      .find({ "customer.buyerEmail": email, orderStatus: status })
+      .find({ managerEmail: email, orderStatus: status })
       .toArray();
     res.json(result);
   } catch (error) {
@@ -315,6 +315,25 @@ app.get("/orders/:email/orderStatus", async (req, res) => {
     res.status(500).json({
       status: 500,
       message: "pending/approve orders get api some problem.",
+    });
+  }
+});
+
+// update order status
+app.patch("/orders/:id/statusUpdate", async (req, res) => {
+  try {
+    const query = { _id: new ObjectId(req.params.id) };
+    const update = req.body;
+    const result = await ordersCollection.updateOne(query, {
+      $set: update,
+    });
+    console.log(query, update);
+    res.json(result);
+  } catch (error) {
+    console.log("orderStatus patch api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "orderStatus patch api some problem.",
     });
   }
 });
