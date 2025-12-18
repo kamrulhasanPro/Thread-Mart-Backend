@@ -5,6 +5,8 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 const { MongoClient, ObjectId } = require("mongodb");
+const Stripe = require("stripe");
+
 const app = express();
 const port = process.env.PORT || 2000;
 
@@ -13,6 +15,8 @@ app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 dotenv.config();
 app.use(express.json());
 app.use(cookieParser());
+app.use(express.static("public"));
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 app.use(async (req, res, next) => {
   console.log(
     `🔰Now api call ${req.host} 🌐from ${
@@ -286,6 +290,74 @@ app.post("/orders", async (req, res) => {
       message: "A order post api some problem.",
     });
   }
+});
+
+// --------------Stripe Payment------------
+app.post("/create-checkout-session", async (req, res) => {
+  const {
+    orderQuantity,
+    productPrice,
+    email,
+    productId,
+    productName,
+    images,
+    orderId,
+  } = req.body;
+  const session = await stripe.checkout.sessions.create({
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: productName,
+            images: [...images],
+            metadata: {
+              productId,
+              email,
+            },
+          },
+          unit_amount: productPrice,
+        },
+        quantity: Number(orderQuantity),
+      },
+    ],
+    mode: "payment",
+    customer_email: email,
+    metadata: {
+      productId,
+      email,
+      orderId,
+    },
+    success_url: `${process.env.YOUR_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.YOUR_DOMAIN}/payment-cancel?session_id={CHECKOUT_SESSION_ID}`,
+  });
+
+  res.json({ url: session.url });
+});
+
+app.get("/session-status", async (req, res) => {
+  const session = await stripe.checkout.sessions.retrieve(req.query.session_id);
+  console.log(session);
+  const query = {
+    _id: new ObjectId(session.metadata.orderId),
+  };
+  const checkPayment = await ordersCollection.findOne(query);
+  console.log(checkPayment);
+  if (checkPayment?.paymentStatus === "paid") {
+    return res.json({
+      status: 409,
+      message: "Payment already processed",
+    });
+  }
+
+  await ordersCollection.updateOne(query, {
+    $set: { paymentStatus: session.payment_status },
+  });
+
+  res.send({
+    status: session.status,
+    customer_email: session.customer_details.email,
+  });
 });
 
 // basic
