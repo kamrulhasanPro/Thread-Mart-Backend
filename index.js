@@ -41,9 +41,11 @@ const verifyToken = (req, res, next) => {
 
 // verify role
 const verifyRoll = (...allowsRole) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     console.log(allowsRole);
-    if (!allowsRole.includes(req.user.role)) {
+    const user = await usersCollection.findOne({ email: req.user?.email });
+    const role = user?.role;
+    if (!allowsRole.includes(role)) {
       return res.status(403).json({
         message: `you are forbidden user. not access for ${allowsRole}`,
       });
@@ -63,6 +65,7 @@ client.connect().then(() => {
 const db = client.db("ThreadMart");
 const usersCollection = db.collection("users");
 const productsCollection = db.collection("products");
+const ordersCollection = db.collection("orders");
 
 // ------------User------------
 app.post("/register", async (req, res) => {
@@ -127,6 +130,8 @@ app.post("/login", async (req, res) => {
     res.cookie("token", token, {
       httpOnly: true,
       sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
     res.status(200).json({
@@ -152,10 +157,19 @@ app.post("/logout", (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
-// ---------------product-------------
+// -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
-    const result = await productsCollection.find().toArray();
+    const { limit, category } = req.query;
+    const query = {};
+    if (category) {
+      query.category = category;
+    }
+
+    const result = await productsCollection
+      .find(query)
+      .limit(parseInt(limit))
+      .toArray();
     res.send(result);
   } catch (error) {
     console.log("all product get api problem.", error);
@@ -165,6 +179,31 @@ app.get("/products", async (req, res) => {
     });
   }
 });
+
+// get manager product
+app.get(
+  "/manage-product",
+  verifyToken,
+  verifyRoll("manager"),
+  async (req, res) => {
+    try {
+      const { email } = req.query;
+      const query = {};
+      if (email) {
+        query.managerEmail = email;
+      }
+      console.log(query);
+      const result = await productsCollection.find(query).toArray();
+      res.send(result);
+    } catch (error) {
+      console.log("manage product get api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "manage product get api some problem.",
+      });
+    }
+  }
+);
 
 // a product get
 app.get("/product/:id/specific", async (req, res) => {
@@ -197,19 +236,24 @@ app.post("/product/post", async (req, res) => {
 });
 
 // a product delete
-app.delete("/product/:id/delete", async (req, res) => {
-  try {
-    const query = { _id: new ObjectId(req.params.id) };
-    const result = await productsCollection.deleteOne(query);
-    res.send(result);
-  } catch (error) {
-    console.log("A product delete api problem.", error);
-    res.status(500).json({
-      status: 500,
-      message: "A product delete api some problem.",
-    });
+app.delete(
+  "/product/:id/delete",
+  verifyToken,
+  verifyRoll("manager"),
+  async (req, res) => {
+    try {
+      const query = { _id: new ObjectId(req.params.id) };
+      const result = await productsCollection.deleteOne(query);
+      res.send(result);
+    } catch (error) {
+      console.log("A product delete api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "A product delete api some problem.",
+      });
+    }
   }
-});
+);
 
 // a product update
 app.patch("/product/:id/update", async (req, res) => {
@@ -225,6 +269,21 @@ app.patch("/product/:id/update", async (req, res) => {
     res.status(500).json({
       status: 500,
       message: "A product update api some problem.",
+    });
+  }
+});
+
+// ---------------orders-----------
+app.post("/orders", async (req, res) => {
+  try {
+    const newOrder = req.body;
+    const result = await ordersCollection.insertOne(newOrder);
+    res.send(result);
+  } catch (error) {
+    console.log("A order post api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "A order post api some problem.",
     });
   }
 });
