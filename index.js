@@ -169,6 +169,21 @@ app.post("/logout", (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
+// get user role
+app.get("/user-role/:email", async (req, res) => {
+  try {
+    const query = { email: req.params.email };
+    const result = await usersCollection.findOne(query);
+    res.json(result.role);
+  } catch (error) {
+    console.log("user role get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "user role get api some problem.",
+    });
+  }
+});
+
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
@@ -286,12 +301,12 @@ app.patch("/product/:id/update", async (req, res) => {
 });
 
 // ---------------orders-----------
-app.post("/orders", async (req, res) => {
+app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
   try {
     const newOrder = req.body;
     const checkProduct = await ordersCollection.findOne({
       productId: newOrder?.productId,
-      orderStatus: { $nin: ["complete", "rejected"] },
+      orderStatus: { $nin: ["Delivered", "rejected"] },
       "customer.buyerEmail": newOrder.customer.buyerEmail,
     });
 
@@ -345,7 +360,7 @@ app.patch("/orders/:id/statusUpdate", async (req, res) => {
         trackingNumber: generateTrackingNumber(),
         updates: [
           {
-            status: "Packed",
+            status: "Picked",
             location: "Warehouse",
             note: "Ready to ship",
             updateAt: new Date(),
@@ -384,6 +399,13 @@ app.patch("/tracking-add/:orderId", async (req, res) => {
       },
       { upsert: true }
     );
+
+    const updateOrderStatus = await ordersCollection.updateOne(
+      { _id: new ObjectId(req.params.orderId) },
+      {
+        $set: { orderStatus: updateTrack.status },
+      }
+    );
     res.json(result);
   } catch (error) {
     console.log("new tracking updated or add  api problem.", error);
@@ -412,7 +434,7 @@ app.get("/tracking-get/:orderId", async (req, res) => {
 app.post(
   "/create-checkout-session",
   verifyToken,
-  verifyRoll("buyer", "manager"),
+  verifyRoll("buyer"),
   async (req, res) => {
     const {
       orderQuantity,
