@@ -26,6 +26,13 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// tracking number create
+const generateTrackingNumber = () => {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `TRK-${date}-${random}`;
+};
+
 // verify token
 const verifyToken = (req, res, next) => {
   const token = req.cookies?.token;
@@ -70,6 +77,7 @@ const db = client.db("ThreadMart");
 const usersCollection = db.collection("users");
 const productsCollection = db.collection("products");
 const ordersCollection = db.collection("orders");
+const trackingCollection = db.collection("trackingOrders");
 
 // ------------User------------
 app.post("/register", async (req, res) => {
@@ -283,12 +291,12 @@ app.post("/orders", async (req, res) => {
     const newOrder = req.body;
     const checkProduct = await ordersCollection.findOne({
       productId: newOrder?.productId,
-      orderStatus: "complete",
+      orderStatus: { $nin: ["complete", "rejected"] },
+      "customer.buyerEmail": newOrder.customer.buyerEmail,
     });
-    console.log(checkProduct);
-    if (!checkProduct)
-      return res.send({ status: 409, message: "Already add this product" });
 
+    if (checkProduct)
+      return res.send({ status: 409, message: "Already add this product" });
     const result = await ordersCollection.insertOne(newOrder);
     res.send(result);
   } catch (error) {
@@ -304,8 +312,8 @@ app.post("/orders", async (req, res) => {
 app.get("/orders/:email/orderStatus", async (req, res) => {
   try {
     const email = req.params.email;
-    console.log(email);
     const { status } = req.query;
+    console.log(email, status);
     const result = await ordersCollection
       .find({ managerEmail: email, orderStatus: status })
       .toArray();
@@ -324,11 +332,35 @@ app.patch("/orders/:id/statusUpdate", async (req, res) => {
   try {
     const query = { _id: new ObjectId(req.params.id) };
     const update = req.body;
-    const result = await ordersCollection.updateOne(query, {
-      $set: update,
-    });
-    console.log(query, update);
-    res.json(result);
+    console.log(update);
+    if (update.orderStatus === "approved") {
+      update.approvedAt = new Date();
+      const result = await ordersCollection.updateOne(query, {
+        $set: update,
+      });
+
+      // add tracking
+      const track = await trackingCollection.insertOne({
+        orderId: req.params.id,
+        trackingNumber: generateTrackingNumber(),
+        updates: [
+          {
+            status: "Packed",
+            location: "Warehouse",
+            note: "Ready to ship",
+            updateAt: new Date(),
+          },
+        ],
+      });
+      console.log(track);
+      res.json(result);
+    } else {
+      const result = await ordersCollection.updateOne(query, {
+        $set: update,
+      });
+      res.json(result);
+      console.log(query, update);
+    }
   } catch (error) {
     console.log("orderStatus patch api problem.", error);
     res.status(500).json({
@@ -338,11 +370,49 @@ app.patch("/orders/:id/statusUpdate", async (req, res) => {
   }
 });
 
+// --------------tracking timeline----------
+// tracking add
+app.patch("/tracking-add/:orderId", async (req, res) => {
+  const updateTrack = req.body;
+  updateTrack.updateAt = new Date();
+  const query = { orderId: req.params.orderId };
+  try {
+    const result = await trackingCollection.updateOne(
+      query,
+      {
+        $push: { updates: updateTrack },
+      },
+      { upsert: true }
+    );
+    res.json(result);
+  } catch (error) {
+    console.log("new tracking updated or add  api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "new tracking updated or add api some problem.",
+    });
+  }
+});
+
+app.get("/tracking-get/:orderId", async (req, res) => {
+  try {
+    const query = { orderId: req.params.orderId };
+    const result = await trackingCollection.findOne(query);
+    res.json(result);
+  } catch (error) {
+    console.log("get tracking api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "get tracking api some problem.",
+    });
+  }
+});
+
 // --------------Stripe Payment------------
 app.post(
   "/create-checkout-session",
   verifyToken,
-  verifyRoll("buyer"),
+  verifyRoll("buyer", "manager"),
   async (req, res) => {
     const {
       orderQuantity,
