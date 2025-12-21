@@ -55,6 +55,7 @@ const verifyRoll = (...allowsRole) => {
   return async (req, res, next) => {
     console.log(allowsRole);
     const user = await usersCollection.findOne({ email: req.user?.email });
+    req.user.status = user?.status;
     const role = user?.role;
     if (!allowsRole.includes(role)) {
       return res.status(403).json({
@@ -291,19 +292,29 @@ app.get("/product/:id/specific", async (req, res) => {
 });
 
 // a product post
-app.post("/product/post", async (req, res) => {
-  try {
-    const newProduct = req.body;
-    const result = await productsCollection.insertOne(newProduct);
-    res.send(result);
-  } catch (error) {
-    console.log("A product post api problem.", error);
-    res.status(500).json({
-      status: 500,
-      message: "A product post api some problem.",
-    });
+app.post(
+  "/product/post",
+  verifyToken,
+  verifyRoll("manager"),
+  async (req, res) => {
+    if (req.user.status === "suspend") {
+      return res.status(403).json({
+        message: `Your Account has been suspend. Please contact with admin.`,
+      });
+    }
+    try {
+      const newProduct = req.body;
+      const result = await productsCollection.insertOne(newProduct);
+      res.send(result);
+    } catch (error) {
+      console.log("A product post api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "A product post api some problem.",
+      });
+    }
   }
-});
+);
 
 // a product delete
 app.delete(
@@ -369,16 +380,26 @@ app.get(
 
 // ---------------orders-----------
 app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
+  if (req.user.status === "suspend") {
+    return res.status(403).json({
+      message: `Your Account has been suspend. Please contact with admin.`,
+    });
+  }
+
   try {
     const newOrder = req.body;
     const checkProduct = await ordersCollection.findOne({
       productId: newOrder?.productId,
-      orderStatus: { $nin: ["Delivered", "rejected"] },
+      orderStatus: { $nin: ["approved", "rejected"] },
       "customer.buyerEmail": newOrder.customer.buyerEmail,
     });
 
     if (checkProduct)
-      return res.send({ status: 409, message: "Already add this product" });
+      return res.send({
+        status: 409,
+        message:
+          "Already add this product please wait for rejected or approved.",
+      });
     const result = await ordersCollection.insertOne(newOrder);
     res.send(result);
   } catch (error) {
@@ -438,6 +459,11 @@ app.patch(
   verifyToken,
   verifyRoll("manager"),
   async (req, res) => {
+    if (req.user.status === "suspend") {
+      return res.status(403).json({
+        message: `Your Account has been suspend. Please contact with admin.`,
+      });
+    }
     try {
       const query = { _id: new ObjectId(req.params.id) };
       const update = req.body;
@@ -499,6 +525,20 @@ app.get(
     }
   }
 );
+
+// all products
+app.get("/all-orders", verifyToken, verifyRoll("admin"), async (req, res) => {
+  try {
+    const result = await ordersCollection.find().toArray();
+    res.json(result);
+  } catch (error) {
+    console.log("all orders get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "all orders get api some problem.",
+    });
+  }
+});
 
 // delete my-order for buyer
 app.delete(
