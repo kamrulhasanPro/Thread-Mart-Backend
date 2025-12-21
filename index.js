@@ -188,7 +188,19 @@ app.get("/user/:email", async (req, res) => {
 // get users
 app.get("/users", verifyToken, verifyRoll("admin"), async (req, res) => {
   try {
-    const result = await usersCollection.find().toArray();
+    const { search, status } = req.query;
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (status) {
+      query.status = status;
+    }
+    const result = await usersCollection.find(query).toArray();
     res.json(result);
   } catch (error) {
     console.log("users get api problem.", error);
@@ -258,10 +270,17 @@ app.get(
   verifyRoll("manager"),
   async (req, res) => {
     try {
-      const { email } = req.query;
+      const { email, search, filter } = req.query;
       const query = {};
       if (email) {
         query.managerEmail = email;
+      }
+      if (search) {
+        query.productName = { $regex: search, $options: "i" };
+      }
+
+      if (filter) {
+        query.category = filter;
       }
       console.log(query);
       const result = await productsCollection.find(query).toArray();
@@ -526,10 +545,24 @@ app.get(
   }
 );
 
-// all products
+// all orders
 app.get("/all-orders", verifyToken, verifyRoll("admin"), async (req, res) => {
   try {
-    const result = await ordersCollection.find().toArray();
+    const { search, status } = req.query;
+    const query = {};
+    if (search) {
+      query.$or = [
+        { productName: { $regex: search, $options: "i" } },
+        { "customer.buyerEmail": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (status) {
+      query.orderStatus = status;
+    }
+
+    console.log(query);
+    const result = await ordersCollection.find(query).toArray();
     res.json(result);
   } catch (error) {
     console.log("all orders get api problem.", error);
