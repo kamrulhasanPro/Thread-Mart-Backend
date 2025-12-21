@@ -324,66 +324,134 @@ app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
 });
 
 // get pending order
-app.get("/orders/:email/orderStatus", async (req, res) => {
+app.get(
+  "/orders/:email/orderStatus",
+  verifyToken,
+  verifyRoll("manager"),
+  async (req, res) => {
+    try {
+      const email = req.params.email;
+      const { status } = req.query;
+      console.log(email, status);
+      const result = await ordersCollection
+        .find({
+          managerEmail: email,
+          orderStatus: status === "approved" ? { $nin: ["pending"] } : status,
+        })
+        .toArray();
+      res.json(result);
+    } catch (error) {
+      console.log("pending/approve orders get api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "pending/approve orders get api some problem.",
+      });
+    }
+  }
+);
+
+// a orders get
+app.get("/order/:id/specific", async (req, res) => {
   try {
-    const email = req.params.email;
-    const { status } = req.query;
-    console.log(email, status);
-    const result = await ordersCollection
-      .find({ managerEmail: email, orderStatus: status })
-      .toArray();
+    const query = { _id: new ObjectId(req.params.id) };
+    const result = await ordersCollection.findOne(query);
     res.json(result);
   } catch (error) {
-    console.log("pending/approve orders get api problem.", error);
+    console.log("a orders get api problem.", error);
     res.status(500).json({
       status: 500,
-      message: "pending/approve orders get api some problem.",
+      message: "a orders get api some problem.",
     });
   }
 });
 
 // update order status
-app.patch("/orders/:id/statusUpdate", async (req, res) => {
-  try {
-    const query = { _id: new ObjectId(req.params.id) };
-    const update = req.body;
-    console.log(update);
-    if (update.orderStatus === "approved") {
-      update.approvedAt = new Date();
-      const result = await ordersCollection.updateOne(query, {
-        $set: update,
-      });
+app.patch(
+  "/orders/:id/statusUpdate",
+  verifyToken,
+  verifyRoll("manager"),
+  async (req, res) => {
+    try {
+      const query = { _id: new ObjectId(req.params.id) };
+      const update = req.body;
+      console.log(update);
+      if (update.orderStatus === "approved") {
+        update.approvedAt = new Date();
+        const result = await ordersCollection.updateOne(query, {
+          $set: update,
+        });
 
-      // add tracking
-      const track = await trackingCollection.insertOne({
-        orderId: req.params.id,
-        trackingNumber: generateTrackingNumber(),
-        updates: [
-          {
-            status: "Picked",
-            location: "Warehouse",
-            note: "Ready to ship",
-            updateAt: new Date(),
-          },
-        ],
+        // add tracking
+        const track = await trackingCollection.insertOne({
+          orderId: req.params.id,
+          trackingNumber: generateTrackingNumber(),
+          updates: [
+            {
+              status: "Picked",
+              location: "Warehouse",
+              note: "Ready to ship",
+              updateAt: new Date(),
+            },
+          ],
+        });
+        console.log(track);
+        res.json(result);
+      } else {
+        const result = await ordersCollection.updateOne(query, {
+          $set: update,
+        });
+        res.json(result);
+        console.log(query, update);
+      }
+    } catch (error) {
+      console.log("orderStatus patch api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "orderStatus patch api some problem.",
       });
-      console.log(track);
-      res.json(result);
-    } else {
-      const result = await ordersCollection.updateOne(query, {
-        $set: update,
-      });
-      res.json(result);
-      console.log(query, update);
     }
-  } catch (error) {
-    console.log("orderStatus patch api problem.", error);
-    res.status(500).json({
-      status: 500,
-      message: "orderStatus patch api some problem.",
-    });
   }
-});
+);
+
+// get my-orders for buyer
+app.get(
+  "/my-orders/:email",
+  verifyToken,
+  verifyRoll("buyer"),
+  async (req, res) => {
+    try {
+      const query = { "customer.buyerEmail": req.params.email };
+      const result = await ordersCollection.find(query).toArray();
+      res.json(result);
+    } catch (error) {
+      console.log("my-orders get api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "my-orders get api some problem.",
+      });
+    }
+  }
+);
+
+// delete my-order for buyer
+app.delete(
+  "/order/:id/delete",
+  verifyToken,
+  verifyRoll("buyer"),
+  async (req, res) => {
+    try {
+      const query = { _id: new ObjectId(req.params.id) };
+      const result = await ordersCollection.deleteOne(query);
+      res.json(result);
+    } catch (error) {
+      console.log("order delete api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "orders delete api some problem.",
+      });
+    }
+  }
+);
 
 // --------------tracking timeline----------
 // tracking add
