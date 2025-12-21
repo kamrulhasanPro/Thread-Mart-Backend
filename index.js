@@ -169,12 +169,12 @@ app.post("/logout", (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
-// get user role
-app.get("/user-role/:email", async (req, res) => {
+// get a user
+app.get("/user/:email", async (req, res) => {
   try {
     const query = { email: req.params.email };
     const result = await usersCollection.findOne(query);
-    res.json(result.role);
+    res.json(result);
   } catch (error) {
     console.log("user role get api problem.", error);
     res.status(500).json({
@@ -183,6 +183,45 @@ app.get("/user-role/:email", async (req, res) => {
     });
   }
 });
+
+// get users
+app.get("/users", verifyToken, verifyRoll("admin"), async (req, res) => {
+  try {
+    const result = await usersCollection.find().toArray();
+    res.json(result);
+  } catch (error) {
+    console.log("users get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "users get api some problem.",
+    });
+  }
+});
+
+// update user status
+app.patch(
+  "/user/:id/update",
+  verifyToken,
+  verifyRoll("admin"),
+  async (req, res) => {
+    try {
+      const query = { _id: new ObjectId(req.params.id) };
+      const update = req.body;
+      const result = await usersCollection.updateOne(query, {
+        $set: update,
+      });
+      console.log(update);
+      res.json(result);
+      console.log(query, update);
+    } catch (error) {
+      console.log("user Status patch api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "user Status patch api some problem.",
+      });
+    }
+  }
+);
 
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
