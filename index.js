@@ -239,7 +239,7 @@ app.patch(
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
-    const { limit, category, showOnHomePage } = req.query;
+    const { limit, category, showOnHomePage, skip } = req.query;
     const query = {};
     if (category) {
       query.category = category;
@@ -250,10 +250,13 @@ app.get("/products", async (req, res) => {
 
     const result = await productsCollection
       .find(query)
+      .skip(parseInt(skip))
       .limit(parseInt(limit))
       .toArray();
-    console.log(result, query);
-    res.send(result);
+      const quantity = await productsCollection.countDocuments();
+      console.log( query, quantity);
+
+    res.send({result, quantity} );
   } catch (error) {
     console.log("all product get api problem.", error);
     res.status(500).json({
