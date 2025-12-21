@@ -226,16 +226,20 @@ app.patch(
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
-    const { limit, category } = req.query;
+    const { limit, category, showOnHomePage } = req.query;
     const query = {};
     if (category) {
       query.category = category;
+    }
+    if (showOnHomePage) {
+      query.showOnHomePage = Boolean(showOnHomePage);
     }
 
     const result = await productsCollection
       .find(query)
       .limit(parseInt(limit))
       .toArray();
+    console.log(result, query);
     res.send(result);
   } catch (error) {
     console.log("all product get api problem.", error);
@@ -305,7 +309,7 @@ app.post("/product/post", async (req, res) => {
 app.delete(
   "/product/:id/delete",
   verifyToken,
-  verifyRoll("manager"),
+  verifyRoll("manager", "admin"),
   async (req, res) => {
     try {
       const query = { _id: new ObjectId(req.params.id) };
@@ -322,22 +326,46 @@ app.delete(
 );
 
 // a product update
-app.patch("/product/:id/update", async (req, res) => {
-  try {
-    const query = { _id: new ObjectId(req.params.id) };
-    const update = { $set: req.body };
-    const result = await productsCollection.updateOne(query, update, {
-      upsert: true,
-    });
-    res.send(result);
-  } catch (error) {
-    console.log("A product update api problem.", error);
-    res.status(500).json({
-      status: 500,
-      message: "A product update api some problem.",
-    });
+app.patch(
+  "/product/:id/update",
+  verifyToken,
+  verifyRoll("admin", "manager"),
+  async (req, res) => {
+    try {
+      const query = { _id: new ObjectId(req.params.id) };
+      const update = { $set: req.body };
+      const result = await productsCollection.updateOne(query, update, {
+        upsert: true,
+      });
+      res.send(result);
+    } catch (error) {
+      console.log("A product update api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "A product update api some problem.",
+      });
+    }
   }
-});
+);
+
+// get all product
+app.get(
+  "/manage-all-products",
+  verifyToken,
+  verifyRoll("admin"),
+  async (req, res) => {
+    try {
+      const result = await productsCollection.find().toArray();
+      res.send(result);
+    } catch (error) {
+      console.log("manage all product get api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "manage all product get api some problem.",
+      });
+    }
+  }
+);
 
 // ---------------orders-----------
 app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
