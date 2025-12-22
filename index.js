@@ -11,8 +11,13 @@ const app = express();
 const port = process.env.PORT || 2000;
 
 // middleware
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 dotenv.config();
+app.use(
+  cors({
+    origin: [`${process.env.YOUR_DOMAIN}`, "http://localhost:5173"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static("public"));
@@ -140,10 +145,11 @@ app.post("/login", async (req, res) => {
     const token = createToken(user);
 
     // set cookie
+    const isProd = process.env.NODE_ENV === "production";
     res.cookie("token", token, {
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      sameSite: isProd ? "none" : "lax",
+      secure: isProd,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -412,11 +418,11 @@ app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
     const newOrder = req.body;
     const checkProduct = await ordersCollection.findOne({
       productId: newOrder?.productId,
-      orderStatus: { $nin: ["approved", "rejected"] },
+      orderStatus: "pending",
       "customer.buyerEmail": newOrder.customer.buyerEmail,
     });
     console.log(checkProduct);
-    if (!checkProduct)
+    if (checkProduct)
       return res.send({
         status: 409,
         message:
