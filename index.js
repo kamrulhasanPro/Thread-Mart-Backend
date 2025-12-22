@@ -253,10 +253,10 @@ app.get("/products", async (req, res) => {
       .skip(parseInt(skip))
       .limit(parseInt(limit))
       .toArray();
-      const quantity = await productsCollection.countDocuments();
-      console.log( query, quantity);
+    const quantity = await productsCollection.countDocuments();
+    console.log(query, quantity);
 
-    res.send({result, quantity} );
+    res.send({ result, quantity });
   } catch (error) {
     console.log("all product get api problem.", error);
     res.status(500).json({
@@ -415,8 +415,8 @@ app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
       orderStatus: { $nin: ["approved", "rejected"] },
       "customer.buyerEmail": newOrder.customer.buyerEmail,
     });
-
-    if (checkProduct)
+    console.log(checkProduct);
+    if (!checkProduct)
       return res.send({
         status: 409,
         message:
@@ -433,7 +433,7 @@ app.post("/orders", verifyToken, verifyRoll("buyer"), async (req, res) => {
   }
 });
 
-// get pending order
+// get pending or approved order
 app.get(
   "/orders/:email/orderStatus",
   verifyToken,
@@ -446,7 +446,10 @@ app.get(
       const result = await ordersCollection
         .find({
           managerEmail: email,
-          orderStatus: status === "approved" ? { $nin: ["pending"] } : status,
+          orderStatus:
+            status === "approved"
+              ? { $nin: ["pending", "rejected", "Delivered"] }
+              : status,
         })
         .toArray();
       res.json(result);
@@ -692,7 +695,7 @@ app.post(
 // stripe retrieve
 app.get("/session-status", async (req, res) => {
   const session = await stripe.checkout.sessions.retrieve(req.query.session_id);
-
+  console.log(session);
   const query = {
     _id: new ObjectId(session.metadata.orderId),
   };
@@ -714,9 +717,102 @@ app.get("/session-status", async (req, res) => {
 
   res.send({
     status: session.status,
+    transaction: session.payment_intent,
     customer_email: session.customer_details.email,
+    amount: session.amount_total,
   });
 });
+
+// states admin
+app.get(
+  "/admin/dashboard-stats",
+  verifyToken,
+  verifyRoll("admin"),
+  async (req, res) => {
+    const totalUsers = await usersCollection.countDocuments();
+    const totalProducts = await productsCollection.countDocuments();
+    const totalOrders = await ordersCollection.countDocuments();
+
+    const totalManagers = await usersCollection.countDocuments({
+      role: "manager",
+    });
+
+    res.json({
+      totalUsers,
+      totalManagers,
+      totalProducts,
+      totalOrders,
+    });
+  }
+);
+
+// states manager
+app.get(
+  "/manager/dashboard-stats",
+  verifyToken,
+  verifyRoll("manager"),
+  async (req, res) => {
+    const myProducts = await productsCollection.countDocuments({
+      managerEmail: req.user.email,
+    });
+
+    const pendingOrders = await ordersCollection.countDocuments({
+      managerEmail: req.user.email,
+      orderStatus: "pending",
+    });
+
+    const approvedOrders = await ordersCollection.countDocuments({
+      managerEmail: req.user.email,
+      orderStatus: { $nin: ["pending", "rejected", "Delivered"] },
+    });
+
+    const deliveredOrders = await ordersCollection.countDocuments({
+      managerEmail: req.user.email,
+      orderStatus: "Delivered",
+    });
+
+    res.json({
+      myProducts,
+      pendingOrders,
+      approvedOrders,
+      deliveredOrders,
+    });
+  }
+);
+
+// states buyer
+app.get(
+  "/buyer/dashboard-stats",
+  verifyToken,
+  verifyRoll("buyer"),
+  async (req, res) => {
+    const myOrders = await ordersCollection.countDocuments({
+      "customer.buyerEmail": req.user.email,
+    });
+
+    const pendingOrders = await ordersCollection.countDocuments({
+      "customer.buyerEmail": req.user.email,
+      orderStatus: "pending",
+    });
+
+    const deliveredOrders = await ordersCollection.countDocuments({
+      "customer.buyerEmail": req.user.email,
+      orderStatus: "Delivered",
+    });
+
+    const rejectedOrders = await ordersCollection.countDocuments({
+      "customer.buyerEmail": req.user.email,
+      orderStatus: "rejected",
+    });
+
+    res.json({
+      myOrders,
+      pendingOrders,
+      rejectedOrders,
+      deliveredOrders,
+    });
+  }
+);
 
 // basic
 app.get("/", (req, res) => {
