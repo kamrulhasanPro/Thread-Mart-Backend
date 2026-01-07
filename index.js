@@ -245,13 +245,20 @@ app.patch(
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
-    const { limit, category, showOnHomePage, skip } = req.query;
+    const { limit, search, category, showOnHomePage, skip } = req.query;
     const query = {};
     if (category) {
       query.category = category;
     }
     if (showOnHomePage) {
       query.showOnHomePage = Boolean(showOnHomePage);
+    }
+
+    if (search) {
+      query.$or = [
+        { productName: { $regex: search, $options: "i" } },
+        { "customer.buyerEmail": { $regex: search, $options: "i" } },
+      ];
     }
 
     const result = await productsCollection
