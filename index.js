@@ -827,6 +827,58 @@ app.get(
   }
 );
 
+// --------rechart data------------
+app.get("/order-stats", verifyToken, async (req, res) => {
+  console.log(req.user);
+  const { role, email } = req.user;
+  const query = {};
+  if (role === "manager") {
+    query.orderStatus = "Delivered";
+    query.managerEmail = email;
+  } else if (role === "admin") {
+    query.orderStatus = "Delivered";
+  }
+  try {
+    const getOrderStats = await ordersCollection
+      .aggregate([
+        {
+          // convert createdAt string → Date
+          $addFields: {
+            createdAtDate: { $toDate: "$createdAt" },
+          },
+        },
+        {
+          $match: query,
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAtDate" },
+            },
+            totalOrders: {
+              $sum: 1,
+            },
+            revenue: {
+              $sum: "$totalPrice",
+            },
+          },
+        },
+        {
+          $sort: { _id: 1 },
+        },
+      ])
+      .toArray();
+
+    res.json(getOrderStats);
+  } catch (error) {
+    console.log("rechart orders stats get api problem.", error);
+    res.status(500).json({
+      status: 500,
+      message: "rechart orders stats get api some problem.",
+    });
+  }
+});
+
 // basic
 app.get("/", (req, res) => {
   return res.json({
