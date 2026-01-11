@@ -879,6 +879,55 @@ app.get("/order-stats", verifyToken, async (req, res) => {
   }
 });
 
+app.get(
+  "/orderStatus-stats",
+  verifyToken,
+  verifyRoll("admin", "manager", "buyer"),
+  async (req, res) => {
+    try {
+      const { role, email } = req.user;
+      const query = {
+        orderStatus: {
+          $in: ["pending", "approved", "Delivered", "rejected"],
+        },
+      };
+      if (role === "manager") {
+        query.managerEmail = email;
+      } else if (role === "buyer") {
+        query["customer.buyerEmail"] = email;
+      }
+
+      const getOrderStatusStats = await ordersCollection
+        .aggregate([
+          {
+            $match: query,
+          },
+          {
+            $group: {
+              _id: "$orderStatus",
+              orders: { $sum: 1 },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              status: "$_id",
+              orders: 1,
+            },
+          },
+        ])
+        .toArray();
+      res.json(getOrderStatusStats);
+    } catch (error) {
+      console.log("rechart order status stats get api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "rechart orders status stats get api some problem.",
+      });
+    }
+  }
+);
+
 // basic
 app.get("/", (req, res) => {
   return res.json({
