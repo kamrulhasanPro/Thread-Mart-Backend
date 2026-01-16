@@ -267,7 +267,7 @@ app.patch(
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
-    const { limit, search, category, showOnHomePage, skip } = req.query;
+    const { limit, search, category, showOnHomePage, skip, sort } = req.query;
     const query = {};
     if (category) {
       query.category = category;
@@ -283,8 +283,17 @@ app.get("/products", async (req, res) => {
       ];
     }
 
+    // sorting
+    const sorting = {};
+    if (sort === "latest") {
+      sorting.createdAt = -1;
+    } else if (sort === "oldest") {
+      sorting.createdAt = 1;
+    }
+
     const result = await productsCollection
       .find(query)
+      .sort(sorting)
       .skip(parseInt(skip))
       .limit(parseInt(limit))
       .toArray();
