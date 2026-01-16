@@ -242,6 +242,28 @@ app.patch(
   }
 );
 
+// update user profile
+app.patch(
+  "/user/:email/profile",
+  verifyToken,
+  verifyRoll("buyer", "admin", "manager"),
+  async (req, res) => {
+    try {
+      const update = { $set: req.body };
+      const { email } = req.params;
+      const query = { email };
+      const result = await usersCollection.updateOne(query, update);
+      return res.json(result);
+    } catch (error) {
+      console.log("user update profile patch api problem.", error);
+      res.status(500).json({
+        status: 500,
+        message: "user update profile patch api some problem.",
+      });
+    }
+  }
+);
+
 // -----------------product-----------------
 app.get("/products", async (req, res) => {
   try {
