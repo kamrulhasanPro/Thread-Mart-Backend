@@ -3,8 +3,7 @@ const { MongoClient } = require("mongodb");
 
 // connect mongodb
 const mongoUri = process.env.MONGODB_URI;
-console.log({mongoUri})
-const client = new MongoClient(process.env.MONGODB_URI);
+const client = new MongoClient(mongoUri);
 // db collection
 const db = client.db("ThreadMart");
 
@@ -13,6 +12,15 @@ const productsCollection = db.collection("products");
 const ordersCollection = db.collection("orders");
 const trackingCollection = db.collection("trackingOrders");
 
+const connectDB = async () => {
+    if (!mongoUri) {
+        throw new Error("MONGODB_URI is not defined");
+    }
+
+    await client.connect();
+    console.log("MongoDB connected successfully.");
+};
+
 module.exports = {
     client,
     db,
@@ -20,4 +28,5 @@ module.exports = {
     productsCollection,
     ordersCollection,
     trackingCollection,
+    connectDB,
 };

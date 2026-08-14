@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const Stripe = require("stripe");
-const { client } = require("./config/db");
+const { connectDB } = require("./config/db");
 const { verifyToken } = require("./middleware/verifyToken");
 const { verifyRole } = require("./middleware/verifyRole");
 const userRoutes = require("./routes/user.routes");
@@ -15,7 +15,7 @@ const paymentRoutes = require("./routes/payment.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 
 const app = express();
-const port = process.env.PORT || 2000;
+const port = process.env.PORT || 3000;
 
 // middleware
 dotenv.config();
@@ -40,12 +40,20 @@ app.use(async (req, res, next) => {
   next();
 });
 
-// connect mongodb
-client.connect().then(() => {
-  app.listen(port, (req, res) => {
-    console.log("MongoDb and Server running.", port);
-  });
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(port, () => {
+      console.log("MongoDb and Server running.", port);
+    });
+  } catch (error) {
+    console.error("MongoDB connection failed:", error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 app.use(userRoutes);
 app.use(productRoutes);
